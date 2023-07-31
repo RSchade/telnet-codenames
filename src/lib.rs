@@ -1,6 +1,7 @@
 use std::{net::{TcpListener, TcpStream, Shutdown}, io::{Read, ErrorKind, Write}};
 
 use game::GameServerState;
+mod codenames;
 mod game;
 
 fn handle_client(stream : &mut TcpStream, game_server_state : &mut GameServerState) -> bool {
@@ -9,29 +10,45 @@ fn handle_client(stream : &mut TcpStream, game_server_state : &mut GameServerSta
     loop {
         // Get the client prompt for the current stream's state
         let prompt = game_server_state.get_client_prompt(stream);
-        let user_state = game_server_state.user_state.get(&stream.peer_addr().unwrap());
-        if user_state.is_none() || user_state.is_some_and(|x| x.prev_prompt != prompt) {
-            match write(stream, &prompt) {
-                Ok(_) => {
-                    game::get_user_state(&mut game_server_state.user_state, stream).prev_prompt = prompt;
-                },
-                Err(_) => {
-                    println!("Unrecoverable write error encountered, dropping connection to {}", stream.peer_addr().unwrap());
-                    return false;
+        match prompt {
+            Some(prompt) => {
+                let user_state = game_server_state.user_state.get(&stream.peer_addr().unwrap());
+                if user_state.is_none() || user_state.is_some_and(|x| x.prev_prompt != prompt) {
+                    match write(stream, &prompt) {
+                        Ok(_) => {
+                            game::get_user_state(&mut game_server_state.user_state, stream).prev_prompt = prompt;
+                        },
+                        Err(_) => {
+                            println!("Unrecoverable write error encountered, dropping connection to {}", stream.peer_addr().unwrap());
+                            return false;
+                        }
+                    }
                 }
+            },
+            None => {
+                // Don't do anything if there's no prompt for the current state of this user
             }
         }
         // based on the returned value, get the response and run the logic for that
         match read_until_block(stream, 10) {
             Ok(line) => {
-                game_server_state.client_logic(stream, Some(line));
+                match game_server_state.client_logic(stream, Some(line)) {
+                    Ok(_) => {},
+                    Err(_) => game_server_state.client_disconnect(stream)
+                }
             },
             Err(e) if e.error_type == ReadLineErrorType::StringParsing => {
                 println!("String parsing error encountered");
                 continue;
             },
             Err(e) if e.error_type == ReadLineErrorType::WouldBlock => {
-                game_server_state.client_logic(stream, None);
+                match game_server_state.client_logic(stream, None) {
+                    Ok(_) => {},
+                    Err(_) => {
+                        game_server_state.client_disconnect(stream);
+                        return false;
+                    }
+                }
                 break;
             },
             Err(e) if e.error_type == ReadLineErrorType::Disconnected => {
