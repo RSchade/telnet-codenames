@@ -1,5 +1,4 @@
-use std::{net::{TcpStream, SocketAddr}, collections::HashMap, rc::Rc};
-use std::cell::RefCell;
+use std::{net::{TcpStream, SocketAddr}, collections::HashMap};
 use std::cmp::max;
 
 use crate::codenames::{codenames_logic, CodenamesRoom, CodenamesPlayer, codenames_prompt};
@@ -14,9 +13,9 @@ pub enum ServerState {
     FatalError
 }
 
-pub struct GameRoom {
+pub struct GameRoom<'a> {
     pub name : String,
-    pub impl_room : Option<CodenamesRoom>
+    pub impl_room : Option<CodenamesRoom<'a>>
 }
 
 pub struct User {
@@ -27,17 +26,17 @@ pub struct User {
     pub player : Option<CodenamesPlayer>
 }
 
-pub struct GameServerState {
+pub struct GameServerState<'a> {
     pub user_state : HashMap<SocketAddr, User>,
-    pub game_rooms : HashMap<i32, GameRoom>
+    pub game_rooms : HashMap<i32, GameRoom<'a>>
 }
 
 pub struct GameError {
 
 }
 
-impl GameServerState {
-    fn get_lobby_listing(self : &GameServerState) -> String {
+impl GameServerState<'_> {
+    fn get_lobby_listing(&self) -> String {
         let rooms = &self.game_rooms;
         let mut out = "0: New Lobby\r\n".to_string();
         for room_iter in rooms.iter() {
@@ -46,7 +45,7 @@ impl GameServerState {
         out
     }
 
-    pub fn get_client_prompt(self : &mut GameServerState, stream : &mut TcpStream) -> Option<String> {
+    pub fn get_client_prompt(&mut self, stream : &mut TcpStream) -> Option<String> {
         let user_state = get_user_state(&mut self.user_state, stream);
         match user_state.state {
             ServerState::Joined => {
@@ -66,7 +65,7 @@ impl GameServerState {
         }
     }
     
-    pub fn client_logic(self : &mut GameServerState, stream : &mut TcpStream, line : Option<String>) -> Result<(), GameError> {
+    pub fn client_logic(&mut self, stream : &mut TcpStream, line : Option<String>) -> Result<(), GameError> {
         let user_state = get_user_state(&mut self.user_state, stream);
         let game_rooms = &mut self.game_rooms;
         let starting_state = user_state.state;
@@ -91,14 +90,14 @@ impl GameServerState {
         Ok(())
     }
 
-    pub fn client_disconnect(self : &mut GameServerState, stream : &mut TcpStream) {
+    pub fn client_disconnect(&mut self, stream : &mut TcpStream) {
         // do any disconnect actions
         let _ = super::write(stream, "Goodbye");
         // remove user state from being tracked
         self.user_state.remove(&stream.peer_addr().unwrap());
     }
 
-    pub fn new() -> GameServerState {
+    pub fn new() -> GameServerState<'static> {
         GameServerState { user_state: HashMap::new(), game_rooms: HashMap::new() }
     }
 }
