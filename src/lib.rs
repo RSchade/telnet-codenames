@@ -1,4 +1,6 @@
 use std::{net::{TcpListener, TcpStream, Shutdown}, io::{Read, ErrorKind, Write}};
+use std::thread::sleep;
+use std::time::Duration;
 
 use game::GameServerState;
 mod codenames;
@@ -128,7 +130,7 @@ pub fn event_loop(listener : TcpListener) -> std::io::Result<()> {
     let _ = listener.set_nonblocking(true)
         .expect("Non blocking sockets must be supported");
 
-    let mut game_server_state = game::GameServerState::new();
+    let mut game_server_state = GameServerState::new();
     let mut open_streams = Vec::new();
     loop {
         // get incoming connections
@@ -151,6 +153,7 @@ pub fn event_loop(listener : TcpListener) -> std::io::Result<()> {
             }
             retain
         });
+        sleep(Duration::from_millis(15))
     }
 }
 
