@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::{fmt, fs};
+use std::fmt;
 use std::net::{SocketAddr, TcpStream};
 use rand::thread_rng;
 use rand::prelude::IteratorRandom;
@@ -99,6 +99,15 @@ struct CodenamesClue {
     clue: String
 }
 
+const LONGEST_CODENAMES_WORD: usize = 14;
+const BOARD_DIM : usize = 5;
+const FLIPPED_LEN : usize = 2;
+const MARKER_LEN : usize = 2;
+const CELL_WIDTH : usize = LONGEST_CODENAMES_WORD + FLIPPED_LEN + MARKER_LEN;
+// add 1 to cell width for each | separator
+// add 1 to the end for the last |
+const LINE_WIDTH : usize = (CELL_WIDTH + 1) * BOARD_DIM + 1;
+
 pub struct CodenamesRoom {
     state : CodenamesState,
     players : HashSet<SocketAddr>,
@@ -107,7 +116,7 @@ pub struct CodenamesRoom {
     guesses : i32,
     assassin_found_by : Option<CodenamesTeam>,
     clue: Option<CodenamesClue>,
-    board : [[CodenamesCard; 5]; 5]
+    board : [[CodenamesCard; BOARD_DIM]; BOARD_DIM]
 }
 
 fn gen_board() -> [[CodenamesCard; 5]; 5] {
@@ -132,7 +141,7 @@ fn gen_board() -> [[CodenamesCard; 5]; 5] {
     if card_types.len() != 25 {
         panic!("Word length doesn't equal the card type length");
     }
-    [[(); 5]; 5].map(| x | x.map(| x | {
+    [[(); 5]; 5].map(| x | x.map(|_| {
         // TODO: should this be a function?
         let (i, &word) = words.iter()
             .enumerate()
@@ -212,21 +221,33 @@ fn initialize_user_board<'a>(user_state : &mut User, game_rooms: &'a mut HashMap
 impl CodenamesRoom {
     /// Returns a string representing a board's state for a given
     /// team and role type
-    fn get_board(&self, team : CodenamesTeam, role : CodenamesRole) -> String {
+    fn get_board(&self, _team : CodenamesTeam, role : CodenamesRole) -> String {
         let board = &self.board;
-        let mut board_str = format!("{:-<81}\r\n", "").to_string();
+        let mut board_str = format!("{:-<width$}\r\n", "", width=LINE_WIDTH).to_string();
         for row in board {
             for card in row {
                 let flipped = if card.flipped { "X".to_string() }  else { " ".to_string() };
                 // If you are a teammate and the card isn't flipped over then ONLY show the word
                 // otherwise you are a spymaster or the card is flipped over, show everything
                 if CodenamesRole::Teammate == role && !card.flipped {
-                    board_str += &format!("|{:>1}{:^14}", flipped, card.word);
+                    board_str += &format!("|{:>flipped_len$}{:^longest$}{:<marker_len$}",
+                                          flipped,
+                                          card.word,
+                                          "".to_string(),
+                                          flipped_len=FLIPPED_LEN,
+                                          longest=LONGEST_CODENAMES_WORD,
+                                          marker_len=MARKER_LEN);
                 } else {
-                    board_str += &format!("|{:>1}{:^13}{:>1} ", flipped, card.word, card.card_type); // TODO: flipped isn't working right
+                    board_str += &format!("|{:>flipped_len$}{:^longest$}{:<marker_len$} ",
+                                          flipped,
+                                          card.word,
+                                          card.card_type,
+                                          flipped_len=FLIPPED_LEN,
+                                          longest=LONGEST_CODENAMES_WORD,
+                                          marker_len=MARKER_LEN);
                 }
             }
-            board_str += &format!("|\r\n{:-<81}\r\n", "");
+            board_str += &format!("|\r\n{:-<width$}\r\n", "", width=LINE_WIDTH);
         }
         board_str
     }
@@ -591,7 +612,8 @@ pub fn codenames_disconnect(addr : SocketAddr,
     for room in game_rooms.values_mut() {
         if let Some(room) = &mut room.impl_room {
             if room.players.contains(&addr) {
-                // TODO: unwrap could be wierD?
+                // TODO: unwrap could be wierd?
+                // TODO: if last person, delete room too
                 broadcast_chat_everyone(
                     format!("{} has left the game!",
                             user_state_map.get(&addr).unwrap().user_name),
